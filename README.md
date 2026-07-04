@@ -20,6 +20,32 @@ The server route `src/app/api/session/route.ts` exchanges your `OPENAI_API_KEY` 
 client secret (`POST /v1/realtime/client_secrets`) — the real key never reaches the browser. The client
 (`src/lib/useRealtimeVoice.ts`) uses that ephemeral key to open the WebRTC connection directly to OpenAI.
 
+## Validation
+
+Run the fast local checks:
+
+```bash
+npm run test
+npm run lint
+npm run build
+```
+
+Run the real browser + OpenAI Realtime e2e check:
+
+```bash
+npm run test:e2e:realtime
+```
+
+That command loads `.env.local`, generates a short fake microphone WAV on macOS
+using `say` + `ffmpeg`, builds the app, starts Next on `http://127.0.0.1:3100`,
+and launches Chrome with fake-media flags. The Playwright spec verifies mic access,
+`/api/session`, the OpenAI SDP exchange, the `session.update` payload, WebRTC
+connection state, and both user/assistant transcript rendering.
+
+Set `FAKE_AUDIO_PATH=/absolute/path/to/input.wav` to provide your own microphone
+fixture. Set `PLAYWRIGHT_CHANNEL=chromium` after running `npx playwright install
+chromium` if Chrome is not installed.
+
 ## Notes / next steps
 
 - User-turn transcripts require `input_audio_transcription` enabled via a `session.update` event, which

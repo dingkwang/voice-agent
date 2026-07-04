@@ -2,25 +2,15 @@
 
 import { useCallback, useRef, useState } from "react";
 import { buildSessionUpdateEvent } from "@/lib/realtimeSessionConfig";
+import {
+  reduceTranscript,
+  type RealtimeEvent,
+  type TranscriptEntry,
+} from "@/lib/transcriptReducer";
 
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 export type Activity = "idle" | "listening" | "responding";
-
-export interface TranscriptEntry {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  final: boolean;
-}
-
-interface RealtimeEvent {
-  type: string;
-  item_id?: string;
-  response_id?: string;
-  transcript?: string;
-  delta?: string;
-  error?: { message?: string };
-}
+export type { TranscriptEntry } from "@/lib/transcriptReducer";
 
 export function useRealtimeVoice() {
   const [status, setStatus] = useState<ConnectionStatus>("idle");
@@ -34,21 +24,6 @@ export function useRealtimeVoice() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const manualDisconnectRef = useRef(false);
-
-  const upsertEntry = useCallback(
-    (id: string, role: TranscriptEntry["role"], textDelta: string, final: boolean) => {
-      setTranscript((prev) => {
-        const existing = prev.find((e) => e.id === id);
-        if (!existing) {
-          return [...prev, { id, role, text: textDelta, final }];
-        }
-        return prev.map((e) =>
-          e.id === id ? { ...e, text: final ? textDelta : e.text + textDelta, final } : e,
-        );
-      });
-    },
-    [],
-  );
 
   const finalizePendingAssistantEntries = useCallback(() => {
     setTranscript((prev) =>
@@ -95,6 +70,8 @@ export function useRealtimeVoice() {
 
   const handleServerEvent = useCallback(
     (event: RealtimeEvent) => {
+      setTranscript((prev) => reduceTranscript(prev, event));
+
       switch (event.type) {
         case "input_audio_buffer.speech_started":
           finalizePendingAssistantEntries();
@@ -104,20 +81,7 @@ export function useRealtimeVoice() {
           setActivity("idle");
           break;
         case "response.output_audio_transcript.delta":
-          if (event.response_id && event.delta) {
-            upsertEntry(event.response_id, "assistant", event.delta, false);
-            setActivity("responding");
-          }
-          break;
-        case "response.output_audio_transcript.done":
-          if (event.response_id && event.transcript) {
-            upsertEntry(event.response_id, "assistant", event.transcript, true);
-          }
-          break;
-        case "conversation.item.input_audio_transcription.completed":
-          if (event.item_id && event.transcript) {
-            upsertEntry(event.item_id, "user", event.transcript, true);
-          }
+          setActivity("responding");
           break;
         case "response.cancelled":
           finalizePendingAssistantEntries();
@@ -133,7 +97,7 @@ export function useRealtimeVoice() {
           break;
       }
     },
-    [finalizePendingAssistantEntries, upsertEntry],
+    [finalizePendingAssistantEntries],
   );
 
   const connect = useCallback(async () => {
