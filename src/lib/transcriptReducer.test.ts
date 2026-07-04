@@ -58,6 +58,27 @@ describe("reduceTranscript", () => {
     ]);
   });
 
+  it("skips app-injected input_text items (no transcription ever fills them)", () => {
+    const entries = play([
+      {
+        type: "conversation.item.added",
+        item: { id: "item_txt", role: "user", content: [{ type: "input_text" }] },
+      },
+    ]);
+    expect(entries).toEqual([]);
+
+    // Audio items carry input_audio content and must still get a placeholder.
+    const audioEntries = play([
+      {
+        type: "conversation.item.added",
+        item: { id: "item_1", role: "user", content: [{ type: "input_audio" }] },
+      },
+    ]);
+    expect(audioEntries).toEqual([
+      { id: "item_1", role: "user", text: PENDING_TRANSCRIPT_TEXT, final: false },
+    ]);
+  });
+
   it("ignores assistant and duplicate item.added events", () => {
     const afterAssistant = play([
       { type: "conversation.item.added", item: { id: "item_a", role: "assistant" } },

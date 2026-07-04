@@ -11,7 +11,7 @@ export interface RealtimeEvent {
   response_id?: string;
   transcript?: string;
   delta?: string;
-  item?: { id?: string; role?: string };
+  item?: { id?: string; role?: string; content?: Array<{ type?: string }> };
   error?: { message?: string };
 }
 
@@ -45,7 +45,11 @@ export function reduceTranscript(
   switch (event.type) {
     case "conversation.item.added": {
       const item = event.item;
-      if (item?.role === "user" && item.id && !prev.some((e) => e.id === item.id)) {
+      // App-injected text turns (sendTextTurn) are input_text-only items; no
+      // transcription event will ever fill their placeholder, so skip them.
+      const isTextOnly =
+        !!item?.content?.length && item.content.every((p) => p.type === "input_text");
+      if (item?.role === "user" && item.id && !isTextOnly && !prev.some((e) => e.id === item.id)) {
         return [
           ...prev,
           { id: item.id, role: "user", text: PENDING_TRANSCRIPT_TEXT, final: false },

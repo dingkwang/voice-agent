@@ -1,6 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  ConversationItemCreateEvent,
+  ResponseCreateEvent,
+} from "openai/resources/realtime/realtime";
 import { buildSessionUpdateEvent } from "@/lib/realtimeSessionConfig";
 import {
   reduceTranscript,
@@ -12,7 +16,12 @@ export type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 export type Activity = "idle" | "listening" | "responding";
 export type { TranscriptEntry } from "@/lib/transcriptReducer";
 
-export function useRealtimeVoice() {
+export interface UseRealtimeVoiceOptions {
+  /** Called with each finalized user transcript (input transcription completed). */
+  onUserTranscript?: (text: string) => void;
+}
+
+export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [activity, setActivity] = useState<Activity>("idle");
   const [muted, setMuted] = useState(false);
@@ -24,6 +33,11 @@ export function useRealtimeVoice() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const manualDisconnectRef = useRef(false);
+  // Ref so a changing callback never re-creates handleServerEvent/connect.
+  const onUserTranscriptRef = useRef(options.onUserTranscript);
+  useEffect(() => {
+    onUserTranscriptRef.current = options.onUserTranscript;
+  }, [options.onUserTranscript]);
 
   const finalizePendingAssistantEntries = useCallback(() => {
     setTranscript((prev) =>
@@ -59,6 +73,25 @@ export function useRealtimeVoice() {
     setStatus("idle");
   }, [cleanupResources]);
 
+  // Injects a text turn into the live conversation and asks the model to
+  // respond — used to make the agent speak a deep-answer summary.
+  const sendTextTurn = useCallback((text: string): boolean => {
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return false;
+    const itemCreate: ConversationItemCreateEvent = {
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text }],
+      },
+    };
+    const responseCreate: ResponseCreateEvent = { type: "response.create" };
+    dc.send(JSON.stringify(itemCreate));
+    dc.send(JSON.stringify(responseCreate));
+    return true;
+  }, []);
+
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -71,6 +104,13 @@ export function useRealtimeVoice() {
   const handleServerEvent = useCallback(
     (event: RealtimeEvent) => {
       setTranscript((prev) => reduceTranscript(prev, event));
+
+      if (
+        event.type === "conversation.item.input_audio_transcription.completed" &&
+        event.transcript
+      ) {
+        onUserTranscriptRef.current?.(event.transcript);
+      }
 
       switch (event.type) {
         case "input_audio_buffer.speech_started":
@@ -192,6 +232,7 @@ export function useRealtimeVoice() {
     connect,
     disconnect,
     toggleMute,
+    sendTextTurn,
     audioElRef,
   };
 }

@@ -18,4 +18,10 @@ describe("realtimeSessionConfig", () => {
     expect(event.session.audio?.input?.transcription?.language).toBe("zh");
     expect(event.session).not.toHaveProperty("input_audio_transcription");
   });
+
+  it("instructs the foreground model to stay short and defer research to the backend", () => {
+    const event = buildSessionUpdateEvent();
+    expect(event.session.instructions).toContain("我来查一下");
+    expect(event.session.instructions).toContain("[deep answer]");
+  });
 });
