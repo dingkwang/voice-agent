@@ -1,5 +1,8 @@
 "use client";
 
+import { useCallback, useEffect, useRef } from "react";
+import { detectDeepAnswerTrigger } from "@/lib/deepAnswer";
+import { useDeepAnswer } from "@/lib/useDeepAnswer";
 import { useRealtimeVoice } from "@/lib/useRealtimeVoice";
 
 const ACTIVITY_LABEL: Record<string, string> = {
@@ -9,6 +12,28 @@ const ACTIVITY_LABEL: Record<string, string> = {
 };
 
 export default function Home() {
+  const deepAnswer = useDeepAnswer();
+  const { ask } = deepAnswer;
+
+  // sendTextTurn comes from the voice hook below; keep it reachable from the
+  // transcript callback via a ref to avoid a circular hook dependency.
+  const sendTextTurnRef = useRef<(text: string) => boolean>(() => false);
+
+  const handleUserTranscript = useCallback(
+    (text: string) => {
+      const trigger = detectDeepAnswerTrigger(text);
+      if (!trigger) return;
+      void ask(text, trigger.mode).then((answer) => {
+        if (answer) {
+          sendTextTurnRef.current(
+            `[deep answer] 请把这段摘要朗读给用户：${answer.spokenSummary}`,
+          );
+        }
+      });
+    },
+    [ask],
+  );
+
   const {
     status,
     activity,
@@ -18,8 +43,12 @@ export default function Home() {
     connect,
     disconnect,
     toggleMute,
+    sendTextTurn,
     audioElRef,
-  } = useRealtimeVoice();
+  } = useRealtimeVoice({ onUserTranscript: handleUserTranscript });
+  useEffect(() => {
+    sendTextTurnRef.current = sendTextTurn;
+  }, [sendTextTurn]);
 
   const isConnected = status === "connected";
   const isConnecting = status === "connecting";
@@ -87,6 +116,52 @@ export default function Home() {
             </ul>
           )}
         </section>
+
+        {deepAnswer.status !== "idle" && (
+          <section className="flex flex-col gap-3 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+              Deep Answer
+              {deepAnswer.answer ? ` — ${deepAnswer.answer.mode}` : ""}
+            </h2>
+
+            {deepAnswer.status === "searching" && (
+              <p className="text-sm text-zinc-500">Searching web &amp; reasoning…</p>
+            )}
+
+            {deepAnswer.status === "error" && (
+              <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+                {deepAnswer.error}
+              </p>
+            )}
+
+            {deepAnswer.status === "ready" && deepAnswer.answer && (
+              <>
+                <p className="text-sm italic text-zinc-600 dark:text-zinc-400">
+                  {deepAnswer.answer.spokenSummary}
+                </p>
+                <div className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">
+                  {deepAnswer.answer.fullAnswer}
+                </div>
+                {deepAnswer.answer.sources.length > 0 && (
+                  <ul className="flex flex-col gap-1">
+                    {deepAnswer.answer.sources.map((source) => (
+                      <li key={source.url} className="text-sm">
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 underline underline-offset-2 dark:text-blue-400"
+                        >
+                          {source.title || source.url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <audio ref={audioElRef} autoPlay className="hidden" />
       </main>
