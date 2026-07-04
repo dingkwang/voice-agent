@@ -15,6 +15,7 @@ describe("realtimeSessionConfig", () => {
     // session.input_audio_transcription field is rejected with
     // "Unknown parameter: 'session.input_audio_transcription'."
     expect(event.session.audio?.input?.transcription?.model).toBe("gpt-realtime-whisper");
+    expect(event.session.audio?.input?.transcription?.language).toBe("zh");
     expect(event.session).not.toHaveProperty("input_audio_transcription");
   });
 });
