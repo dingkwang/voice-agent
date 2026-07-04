@@ -1,6 +1,7 @@
 import type {
   Response as DeepAnswerAPIResponse,
   ResponseCreateParamsNonStreaming,
+  ResponseFunctionWebSearch,
 } from "openai/resources/responses/responses";
 import type { ReasoningEffort } from "openai/resources/shared";
 
@@ -11,6 +12,11 @@ export interface AnswerSource {
   url: string;
 }
 
+export interface AnswerToolCall {
+  action: "search" | "open_page" | "find_in_page";
+  detail: string;
+}
+
 export interface AnswerObject {
   id: string;
   query: string;
@@ -18,6 +24,7 @@ export interface AnswerObject {
   spokenSummary: string;
   fullAnswer: string;
   sources: AnswerSource[];
+  toolCalls: AnswerToolCall[];
   createdAt: string;
 }
 
@@ -108,9 +115,30 @@ interface ParsedAnswerPayload {
   sources?: unknown;
 }
 
+function describeWebSearchCall(
+  action: ResponseFunctionWebSearch["action"],
+): AnswerToolCall | null {
+  switch (action.type) {
+    case "search": {
+      const queries = action.queries?.length
+        ? action.queries
+        : action.query
+          ? [action.query]
+          : [];
+      return { action: "search", detail: queries.join("; ") };
+    }
+    case "open_page":
+      return { action: "open_page", detail: action.url ?? "" };
+    case "find_in_page":
+      return { action: "find_in_page", detail: `"${action.pattern}" in ${action.url}` };
+    default:
+      return null;
+  }
+}
+
 // The raw Responses API JSON: answer text (our JSON payload) lives in
-// message output items; web_search citations arrive as url_citation
-// annotations on the same output_text parts.
+// message output items; web_search tool activity arrives as web_search_call
+// items and citations as url_citation annotations on output_text parts.
 export function parseDeepAnswerResponse(
   response: DeepAnswerAPIResponse,
   query: string,
@@ -118,7 +146,13 @@ export function parseDeepAnswerResponse(
 ): AnswerObject {
   let text = "";
   const citedSources: AnswerSource[] = [];
+  const toolCalls: AnswerToolCall[] = [];
   for (const item of response.output ?? []) {
+    if (item.type === "web_search_call") {
+      const call = describeWebSearchCall(item.action);
+      if (call) toolCalls.push(call);
+      continue;
+    }
     if (item.type !== "message") continue;
     for (const part of item.content) {
       if (part.type !== "output_text") continue;
@@ -162,6 +196,7 @@ export function parseDeepAnswerResponse(
     spokenSummary: payload.spoken_summary,
     fullAnswer: payload.full_answer,
     sources,
+    toolCalls,
     createdAt: new Date().toISOString(),
   };
 }

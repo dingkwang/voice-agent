@@ -136,6 +136,23 @@ export default function Home() {
 
             {deepAnswer.status === "ready" && deepAnswer.answer && (
               <>
+                {deepAnswer.answer.toolCalls.length > 0 && (
+                  <details className="text-sm text-zinc-500">
+                    <summary className="cursor-pointer select-none">
+                      Tool calls ({deepAnswer.answer.toolCalls.length})
+                    </summary>
+                    <ul className="mt-1 flex flex-col gap-1 pl-4">
+                      {deepAnswer.answer.toolCalls.map((call, i) => (
+                        <li key={i} className="break-all">
+                          <span className="font-mono text-xs text-zinc-400">
+                            {call.action}
+                          </span>{" "}
+                          {call.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 <p className="text-sm italic text-zinc-600 dark:text-zinc-400">
                   {deepAnswer.answer.spokenSummary}
                 </p>

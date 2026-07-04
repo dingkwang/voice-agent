@@ -96,6 +96,41 @@ describe("parseDeepAnswerResponse", () => {
     expect(answer.query).toBe("q");
   });
 
+  it("extracts web_search_call items into toolCalls", () => {
+    const response = apiResponse(JSON.stringify(payload));
+    (response.output as unknown[]).unshift(
+      {
+        type: "web_search_call",
+        id: "ws_1",
+        status: "completed",
+        action: { type: "search", queries: ["发展心理学 书 父母", "parenting psychology books"] },
+      },
+      {
+        type: "web_search_call",
+        id: "ws_2",
+        status: "completed",
+        action: { type: "open_page", url: "https://example.com/list" },
+      },
+      {
+        type: "web_search_call",
+        id: "ws_3",
+        status: "completed",
+        action: { type: "find_in_page", pattern: "皮亚杰", url: "https://example.com/list" },
+      },
+    );
+    const answer = parseDeepAnswerResponse(response, "q", "deep");
+    expect(answer.toolCalls).toEqual([
+      { action: "search", detail: "发展心理学 书 父母; parenting psychology books" },
+      { action: "open_page", detail: "https://example.com/list" },
+      { action: "find_in_page", detail: '"皮亚杰" in https://example.com/list' },
+    ]);
+  });
+
+  it("returns empty toolCalls when no web_search_call items exist", () => {
+    const answer = parseDeepAnswerResponse(apiResponse(JSON.stringify(payload)), "q", "deep");
+    expect(answer.toolCalls).toEqual([]);
+  });
+
   it("merges url_citation annotations into sources and dedupes by URL", () => {
     const answer = parseDeepAnswerResponse(
       apiResponse(JSON.stringify(payload), [
